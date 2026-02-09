@@ -1,0 +1,4 @@
+discretize
+numpy
+matplotlib
+gmsh
