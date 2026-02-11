@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def buildMesh_quadTree(dx=1, dy=1, x_len=256, y_len=256, x0="CC"):
+def buildMesh_quadTree(dx=1.0, dy=1.0, x_len=256.0, y_len=256.0, x0="CC"):
     x_levels = int(np.ceil(np.log2(x_len / dx)))
     y_levels = int(np.ceil(np.log2(y_len / dy)))
     levels = min(x_levels, y_levels)
@@ -16,7 +16,7 @@ def buildMesh_quadTree(dx=1, dy=1, x_len=256, y_len=256, x0="CC"):
     # Define the base mesh
     hx = [(dx, nbcx)]
     hy = [(dy, nbcy)]
-    mesh = TreeMesh([hx, hy], x0="CC")
+    mesh = TreeMesh([hx, hy], x0=x0, diagonal_balance=False)
 
     return mesh, levels
 
@@ -88,32 +88,62 @@ def buildMesh_tri_cylinder_gmsh(
     """
 
     gmsh.initialize()
-    gmsh.model.add("ring")
 
-    x0 = np.asarray(x0, dtype=float)
+    x0 = np.asarray(x0, dtype=np.float64)
 
+    # gmsh.option.setNumber("Mesh.Algorithm", 2)
     gmsh.option.setNumber("Mesh.ElementOrder", 1)
     gmsh.option.setNumber("Mesh.HighOrderOptimize", 0)
     gmsh.option.setNumber("Mesh.SecondOrderLinear", 0)
 
+    gmsh.model.add("ring")
     # ------------------------------------------------------------
     # Geometry
     # ------------------------------------------------------------
-    ci = gmsh.model.occ.addCircle(x0[0], x0[1], 0.0, r_inner)
-    co = gmsh.model.occ.addCircle(x0[0], x0[1], 0.0, r_outer)
+    # ci = gmsh.model.occ.addCircle(x0[0], x0[1], 0.0, r_inner)
+    # co = gmsh.model.occ.addCircle(x0[0], x0[1], 0.0, r_outer)
 
-    li = gmsh.model.occ.addCurveLoop([ci])
-    lo = gmsh.model.occ.addCurveLoop([co])
+    # li = gmsh.model.occ.addCurveLoop([-ci])
+    # lo = gmsh.model.occ.addCurveLoop([co])
 
-    surf = gmsh.model.occ.addPlaneSurface([lo, li])
+    # surf = gmsh.model.occ.addPlaneSurface([lo, li])
 
-    gmsh.model.occ.synchronize()
+    # gmsh.model.occ.synchronize()
+
+    # ------------------------------------------------------------
+    # Geometry with GEO
+    # ------------------------------------------------------------
+    p_center = gmsh.model.geo.addPoint(x0[0], x0[1], 0, 0.1)
+    p_inner = gmsh.model.geo.addPoint(x0[0] + r_inner, x0[1], 0, lc_inner)
+    p_outer = gmsh.model.geo.addPoint(x0[0] + r_outer, x0[1], 0, lc)
+    p_inner_l = gmsh.model.geo.addPoint(x0[0] - r_inner, x0[1], 0, lc_inner)
+    p_outer_l = gmsh.model.geo.addPoint(x0[0] - r_outer, x0[1], 0, lc)
+
+    ci = gmsh.model.geo.addCircleArc(p_inner, p_center, p_inner_l)  # Closed circle
+    co = gmsh.model.geo.addCircleArc(p_outer, p_center, p_outer_l)
+
+    ci_lo = gmsh.model.geo.addCircleArc(p_inner_l, p_center, p_inner)  # Closed circle
+    co_lo = gmsh.model.geo.addCircleArc(p_outer_l, p_center, p_outer)
+
+    # Curve loops (outer CCW, inner CW via negative tag)
+    outer_loop = gmsh.model.geo.addCurveLoop([co, co_lo])
+    inner_loop = gmsh.model.geo.addCurveLoop([-ci, -ci_lo])
+    surf = gmsh.model.geo.addPlaneSurface([outer_loop, inner_loop])
+
+    # Enforce uniform 1D mesh with exact point counts
+    n_inner = int(np.ceil(np.pi * r_inner / lc_inner))
+    n_outer = int(np.ceil(np.pi * r_inner / lc))
+    gmsh.model.geo.mesh.setTransfiniteCurve(ci, n_inner, "Progression", 1.0)
+    gmsh.model.geo.mesh.setTransfiniteCurve(ci_lo, n_inner, "Progression", 1.0)
+    gmsh.model.geo.mesh.setTransfiniteCurve(co, n_outer, "Progression", 1.0)
+    gmsh.model.geo.mesh.setTransfiniteCurve(co_lo, n_outer, "Progression", 1.0)
+    gmsh.model.geo.synchronize()
 
     # ------------------------------------------------------------
     # Physical groups (boundary IDs)
     # ------------------------------------------------------------
-    inner_tag = gmsh.model.addPhysicalGroup(1, [ci])
-    outer_tag = gmsh.model.addPhysicalGroup(1, [co])
+    inner_tag = gmsh.model.addPhysicalGroup(1, [ci, ci_lo])
+    outer_tag = gmsh.model.addPhysicalGroup(1, [co, co_lo])
     surface_tag = gmsh.model.addPhysicalGroup(2, [surf])
 
     gmsh.model.setPhysicalName(1, inner_tag, "inner")
@@ -130,7 +160,7 @@ def buildMesh_tri_cylinder_gmsh(
     # Distance field from inner boundary
     # ------------------------------------------------------------
     gmsh.model.mesh.field.add("Distance", 1)
-    gmsh.model.mesh.field.setNumbers(1, "EdgesList", [ci])
+    gmsh.model.mesh.field.setNumbers(1, "EdgesList", [ci, ci_lo])
 
     # ------------------------------------------------------------
     # Threshold field: size vs distance
@@ -142,6 +172,11 @@ def buildMesh_tri_cylinder_gmsh(
     gmsh.model.mesh.field.setNumber(2, "DistMin", 0.0)
     gmsh.model.mesh.field.setNumber(2, "DistMax", r_outer - r_inner)
     gmsh.model.mesh.field.setAsBackgroundMesh(2)
+
+    # disable some mesh size controls
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
 
     gmsh.model.mesh.generate(2)
 

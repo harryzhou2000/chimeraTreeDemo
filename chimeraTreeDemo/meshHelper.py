@@ -1,5 +1,6 @@
-from discretize import SimplexMesh
+from discretize import SimplexMesh, TreeMesh
 import numpy as np
+
 
 def get_max_edge_length(mesh: SimplexMesh):
     nodes = mesh.nodes
@@ -35,9 +36,46 @@ def get_max_AABB_length(mesh: SimplexMesh):
     # print(
     #     pMax - pMin,
     # )
-    ret =  np.max(pMax - pMin, axis=1) 
+    ret = np.max(pMax - pMin, axis=1)
 
     return ret
 
-def get_level(h:np.ndarray, level_max:int, h_0: float):
+
+def get_level(h: np.ndarray, level_max: int, h_0: float):
     return np.clip(level_max - np.floor(np.log2(h / h_0)), 1, level_max)
+
+
+def refine_tree_mesh_by_tri(
+    meshB: TreeMesh, h0: float, nLevel: int, mesh0: SimplexMesh
+):
+    cents = mesh0.cell_centers
+    Ls = get_max_edge_length(mesh0)
+    LsAABB = get_max_AABB_length(mesh0)
+    meshB.refine_ball(
+        cents,
+        Ls * 1,
+        get_level(LsAABB, nLevel, h0),
+        finalize=False,
+    )
+
+def get_tri_to_tree_intersect(
+    meshB:TreeMesh, mesh0:SimplexMesh
+):
+    cells = mesh0.simplices
+    nodes = mesh0.nodes
+
+    tris = nodes[cells]
+
+    nCell = mesh0.n_cells
+
+    tree_cells_on_tri = [[] for _ in range(nCell)]
+    tri_cells_on_tree = [[] for _ in range(meshB.n_cells)]
+
+    for i in range(nCell):
+        tree_cells_on_tri[i] = meshB.get_cells_in_triangle(tris[i])
+        for iTree in tree_cells_on_tri[i]:
+            tri_cells_on_tree[iTree].append(i)
+
+    tri_cells_on_tree = [np.unique(np.array(row, dtype=np.int64)) for row in tri_cells_on_tree]
+
+    return tree_cells_on_tri, tri_cells_on_tree

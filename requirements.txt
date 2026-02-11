@@ -1,4 +1,8 @@
 discretize
 numpy
+scipy
+sympy
 matplotlib
 gmsh
+rtree
+trimesh
