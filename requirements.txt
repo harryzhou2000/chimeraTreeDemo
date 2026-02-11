@@ -3,6 +3,7 @@ numpy
 scipy
 sympy
 matplotlib
+pandas
 gmsh
 rtree
 trimesh

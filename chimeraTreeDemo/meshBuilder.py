@@ -1,7 +1,19 @@
-from discretize import TreeMesh
+from discretize import TreeMesh, SimplexMesh
 from discretize.utils import mkvc
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+class SimplexMeshShifted(SimplexMesh):
+    def __init__(self, nodes, simplices):
+        dim = nodes.shape[1]
+        self.off = np.zeros((1, dim), dtype = np.float64)
+        self.rot = np.eye(dim, dtype=np.float64)
+        super().__init__(nodes, simplices)
+
+    @property
+    def nodes(self):
+        return (super().nodes + self.off) @ self.rot.T
 
 
 def buildMesh_quadTree(dx=1.0, dy=1.0, x_len=256.0, y_len=256.0, x0="CC"):
@@ -25,8 +37,6 @@ def buildMesh_quadTree(dx=1.0, dy=1.0, x_len=256.0, y_len=256.0, x0="CC"):
 
 
 import gmsh
-import numpy as np
-from discretize import SimplexMesh
 
 
 def extract_boundary_lines(physical_name, tag_to_idx):
@@ -132,7 +142,7 @@ def buildMesh_tri_cylinder_gmsh(
 
     # Enforce uniform 1D mesh with exact point counts
     n_inner = int(np.ceil(np.pi * r_inner / lc_inner))
-    n_outer = int(np.ceil(np.pi * r_inner / lc))
+    n_outer = int(np.ceil(np.pi * r_outer / lc))
     gmsh.model.geo.mesh.setTransfiniteCurve(ci, n_inner, "Progression", 1.0)
     gmsh.model.geo.mesh.setTransfiniteCurve(ci_lo, n_inner, "Progression", 1.0)
     gmsh.model.geo.mesh.setTransfiniteCurve(co, n_outer, "Progression", 1.0)
