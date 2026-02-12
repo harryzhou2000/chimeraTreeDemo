@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=64.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chimeraTreeDemo"
+version = "0.1.0"
+description = "Research demo for chimera grid building via tree mesh"
+dynamic = ["dependencies"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["chimeraTreeDemo"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = "requirements.txt"}

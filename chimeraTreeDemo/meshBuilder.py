@@ -7,13 +7,21 @@ import numpy as np
 class SimplexMeshShifted(SimplexMesh):
     def __init__(self, nodes, simplices):
         dim = nodes.shape[1]
-        self.off = np.zeros((1, dim), dtype = np.float64)
+        self.off = np.zeros((1, dim), dtype=np.float64)
         self.rot = np.eye(dim, dtype=np.float64)
         super().__init__(nodes, simplices)
 
+    @classmethod
+    def from_SimplexMesh(cls, mesh: SimplexMesh):
+        return cls(mesh.nodes, mesh.simplices)
+
     @property
-    def nodes(self):
+    def nodes(self):  # override
         return (super().nodes + self.off) @ self.rot.T
+
+    @property
+    def cell_centers(self):  # override (we could force updating after shift changing)
+        return np.mean(self.nodes[self.simplices], axis=1)
 
 
 def buildMesh_quadTree(dx=1.0, dy=1.0, x_len=256.0, y_len=256.0, x0="CC"):

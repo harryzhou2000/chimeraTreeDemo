@@ -1,10 +1,10 @@
+from . import distanceField
+from . import meshHelper
+from .meshBuilder import SimplexMeshShifted
+
 import numpy as np
 from discretize import TreeMesh, SimplexMesh
-import distanceField
-
 from dataclasses import dataclass
-import meshHelper
-from meshBuilder import SimplexMeshShifted
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 import matplotlib.collections
@@ -24,7 +24,7 @@ class FGMesh:
         facecolor="#00EAFFB9",
         cell_mask=None,
     ):
-        import meshPlotUtils
+        from . import meshPlotUtils
 
         meshPlotUtils.plot_mesh_mono(
             self.mesh,
@@ -109,7 +109,7 @@ def chimeraHole2DTreeTri(
     conns: list[MeshCellConn],
     gap=0.0,
 ):
-    import geomHelper
+    from . import geomHelper
 
     inf_val = 1e300
 
@@ -162,7 +162,7 @@ def chimeraHole2DTreeTri(
 
     minDs, maxDs = B_dists_range
 
-    print(maxDs[0][1951])
+    # print(maxDs[0][1951])
 
     nMesh = len(meshes)
 

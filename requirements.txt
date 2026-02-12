@@ -10,4 +10,4 @@ trimesh
 ipykernel
 ipython
 ipympl
-
+opencv-python

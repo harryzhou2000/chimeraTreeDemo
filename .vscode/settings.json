@@ -1,0 +1,6 @@
+{
+    "files.watcherExclude": {
+        "**/*.egg-info": true,
+        "venv": true
+    }
+}

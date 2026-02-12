@@ -1,24 +1,22 @@
-import meshBuilder
+from . import meshBuilder
+from . import meshPlotUtils
+from . import chimeraTree2D_Helper
+from . import distanceField
+from . import meshHelper
+
+from .chimeraTree2D_Helper import FGMesh, MeshCellConn
+
 import numpy as np
 from discretize import SimplexMesh
-import distanceField
-import meshHelper
-import chimeraTree2D_Helper
-from chimeraTree2D_Helper import FGMesh, MeshCellConn
-import meshPlotUtils
 
 
 class ChimeraTree2D:
     def __init__(self, h0=1 / 1024, Lx=128.0, Ly=128.0, x0="CC"):
         self.meshes: list[FGMesh] = []
         self.h0 = h0
-        self.meshB, self.nlevel = meshBuilder.buildMesh_quadTree(
-            h0,
-            h0,
-            Lx,
-            Ly,
-            x0=x0,
-        )
+        self.Lx = Lx
+        self.Ly = Ly
+        self.x0 = x0
 
     @property
     def n_meshes(self):
@@ -28,6 +26,13 @@ class ChimeraTree2D:
         self.meshes.append(mesh0)
 
     def refine_meshB(self):
+        self.meshB, self.nlevel = meshBuilder.buildMesh_quadTree(
+            self.h0,
+            self.h0,
+            self.Lx,
+            self.Ly,
+            x0=self.x0,
+        )
         for m in self.meshes:
             meshHelper.refine_tree_mesh_by_tri(
                 self.meshB,
