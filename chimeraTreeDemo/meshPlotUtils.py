@@ -1,10 +1,15 @@
 import matplotlib.pyplot as plt
 
-
+import matplotlib
 from matplotlib.colors import LinearSegmentedColormap, to_rgba
 import numpy as np
 
 import discretize
+
+
+def get_color_seq(alpha=0.3):
+    tab10_colors = matplotlib.colormaps["tab10"].colors
+    return [to_rgba(c, alpha=alpha) for c in tab10_colors]
 
 
 def monocolor_cmap(color=(0.5, 0.5, 0.5, 1)):
@@ -45,7 +50,7 @@ def plot_mesh_mono(
             "alpha": None,  # this makes sure no overriding cmap's alpha
             "cmap": monocolor_cmap(to_rgba(facecolor)),
             "edgecolors": "face",
-            "lw": linewidth
+            "lw": linewidth,
         },
     )
     mesh0.plot_grid(ax=ax, color=linecolor, linewidth=linewidth)

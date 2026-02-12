@@ -4,13 +4,42 @@ import distanceField
 
 from dataclasses import dataclass
 import meshHelper
+from meshBuilder import SimplexMeshShifted
+from matplotlib.axes import Axes
+import matplotlib.pyplot as plt
+import matplotlib.collections
 
 
 class FGMesh:
-    def __init__(self, mesh0: SimplexMesh, b0: np.ndarray):
+    def __init__(self, mesh0: SimplexMesh | SimplexMeshShifted, b0: np.ndarray):
         self.mesh = mesh0
         self.b = b0
         self.d = distanceField.get_mesh_nodal_wall_distance(mesh0, b0)
+
+    def plot_mesh_mono(
+        self,
+        ax: Axes,
+        linewidth=0.5,
+        linecolor="#0000FF7B",
+        facecolor="#00EAFFB9",
+        cell_mask=None,
+    ):
+        import meshPlotUtils
+
+        meshPlotUtils.plot_mesh_mono(
+            self.mesh,
+            ax=ax,
+            linewidth=linewidth,
+            linecolor=linecolor,
+            facecolor=facecolor,
+            cell_mask=cell_mask,
+        )
+
+    def plot_bnd(self, ax: Axes, linewidth=0.5, linecolor="#000000F6"):
+        line_col = matplotlib.collections.LineCollection(
+            self.mesh.nodes[self.b], colors=linecolor, linewidths=linewidth
+        )
+        ax.add_collection(line_col)
 
 
 @dataclass
@@ -68,13 +97,14 @@ def chimeraMeshBHole2DTreeTri(
     # solid
     fluid_solid_B[np.logical_or.reduce(fluid_solid_B_meshes == -1, axis=0)] = -1
 
-    return fluid_solid_B
+    return fluid_solid_B, fluid_solid_B_meshes
 
 
 def chimeraHole2DTreeTri(
     meshB: TreeMesh,
     meshes: list[FGMesh],
     fluid_solid_B: np.typing.NDArray[np.int32],
+    fluid_solid_B_meshes: np.typing.NDArray[np.int32],
     meshB_cell2cell: list[np.ndarray],
     conns: list[MeshCellConn],
     gap=0.0,
@@ -94,7 +124,10 @@ def chimeraHole2DTreeTri(
     B_dists = np.empty((len(meshes), meshB.n_cells, 4), dtype=np.float64)
     B_dists[:] = inf_val
 
+    # 1. get B_dists, distance field on bg mesh
+
     for iMesh, (mesh, conn) in enumerate(zip(meshes, conns)):
+        fluid_solid_B_mesh = fluid_solid_B_meshes[iMesh]
         B_dist = B_dists[iMesh]
         nodes = mesh.mesh.nodes
         # tri_nodes = nodes[mesh.mesh.simplices]
@@ -111,19 +144,25 @@ def chimeraHole2DTreeTri(
             else:
                 nodalD = np.empty(4, dtype=np.float64)
                 nodalD[:] = inf_val
-            if fluid_solid_B[iCellB] == -1:
+            if fluid_solid_B_mesh[iCellB] == -1:
                 nodalD[:] = -inf_val
-            if fluid_solid_B[iCellB] == 2:
+            if fluid_solid_B_mesh[iCellB] == 2:
                 nodalD[nodalD > inf_val * 0.5] = -inf_val
 
             B_dist[iCellB] = nodalD
 
-    B_dists_range: list[np.ndarray] = (
+    # print("see 1951")
+    # print(fluid_solid_B[1951])
+    # print(B_dists[0][1951])
+
+    B_dists_range: tuple[np.ndarray] = (
         B_dists.min(axis=2),
         B_dists.max(axis=2),
     )  # (2, N_mesh, N_cell)
 
     minDs, maxDs = B_dists_range
+
+    print(maxDs[0][1951])
 
     nMesh = len(meshes)
 
@@ -133,7 +172,7 @@ def chimeraHole2DTreeTri(
         where_mask = np.arange(nMesh).reshape(nMesh, 1) != iMesh
         min_other = np.min(B_dists_range[0], axis=0, where=where_mask, initial=inf_val)
         max_other = np.max(B_dists_range[1], axis=0, where=where_mask, initial=-inf_val)
-        B_mesh_dHole = maxDs[iMesh] - min_other < gap
+        B_mesh_dHole = maxDs[iMesh] - min_other < -gap
         B_mesh_dHoles.append(B_mesh_dHole)
 
     for iMesh, conn in enumerate(conns):
@@ -144,7 +183,7 @@ def chimeraHole2DTreeTri(
         for iCellB in np.arange(meshB.n_cells)[holeB_overlapPos]:
             holes[iMesh][conn.M_cells_on_B[iCellB]] = 0
 
-    holeB_mends = [] 
+    holeB_mends = []
     # holeB_mend[iMesh] denotes the B-cells not fully covered by any active M-cell
     # except for solid and s-f bound cells
     for iMesh, (mesh, conn) in enumerate(zip(meshes, conns)):
@@ -152,14 +191,17 @@ def chimeraHole2DTreeTri(
         for iCellM in np.arange(mesh.mesh.n_cells)[holes[iMesh] == 0]:
             holeB_mend[conn.B_cells_on_M[iCellM]] = np.True_
         # touched by hole-fluid M-mesh cell, or not touched by any M-mesh cell at all (inf)
-        holeB_mend = np.logical_or(holeB_mend, maxDs[iMesh] > 0.5 * inf_val) 
+        holeB_mend = np.logical_or(holeB_mend, maxDs[iMesh] > 0.5 * inf_val)
         holeB_mends.append(holeB_mend)
     holeB += np.logical_and.reduce(holeB_mends)
 
     # # far field B-cells, needed for original distance-overlapping hole
-    # holeB += B_dists_range[1].min(axis=0) > 0.5 * inf_val 
+    # holeB += B_dists_range[1].min(axis=0) > 0.5 * inf_val
 
     holeB = holeB != 0
+
+    # holeB = holeB_overlapPos
+    # holeB = B_mesh_dHoles[0]
 
     return holeB, holes
 
@@ -191,3 +233,4 @@ def interval_overlap_any_two(
             )
         ),
     )
+    # return np.logical_or.reduce(overlaps)

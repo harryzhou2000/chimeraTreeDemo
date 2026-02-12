@@ -7,3 +7,7 @@ pandas
 gmsh
 rtree
 trimesh
+ipykernel
+ipython
+ipympl
+
