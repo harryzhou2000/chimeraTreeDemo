@@ -72,12 +72,26 @@ class ChimeraTree2D:
             gap=gap,
         )
 
+    def chimeraPart(self, N=8):
+        self.partB, self.parts = chimeraTree2D_Helper.chimeraPart2DTreeTri(
+            self.meshB,
+            self.meshes,
+            self.fluid_solid_B,
+            self.fluid_solid_B_meshes,
+            self.meshB_cell2cell,
+            self.conns,
+            self.holeB,
+            self.holes,
+            N=N,
+        )
+
     def plot_holes(
         self,
         ax,
         linecolor_B="#43434349",
         facecolor_B="#43434349",
         mesh_colors=meshPlotUtils.get_color_seq(),
+        cell_line=False,
     ):
         meshPlotUtils.plot_mesh_mono(
             self.meshB,
@@ -85,6 +99,7 @@ class ChimeraTree2D:
             cell_mask=self.holeB,
             linecolor=linecolor_B,
             facecolor=facecolor_B,
+            cell_line=cell_line,
         )
 
         for iMesh, (mesh, hole) in enumerate(zip(self.meshes, self.holes)):
@@ -93,6 +108,28 @@ class ChimeraTree2D:
                 cell_mask=hole,
                 linecolor="#00000000",
                 facecolor=mesh_colors[iMesh % len(mesh_colors)],
+            )
+        for mesh in self.meshes:
+            mesh.plot_bnd(ax=ax, linecolor="k")
+
+    def plot_parts(
+        self, ax, linecolor_B="#43434349", facecolor_B="tab10", cell_line=False, N=8
+    ):
+        meshPlotUtils.plot_mesh_mono(
+            self.meshB,
+            ax=ax,
+            cell_mask=self.partB / N,
+            linecolor=linecolor_B,
+            facecolor=facecolor_B,
+            cell_line=cell_line,
+        )
+
+        for iMesh, (mesh, part) in enumerate(zip(self.meshes, self.parts)):
+            mesh.plot_mesh_mono(
+                ax=ax,
+                cell_mask=part / N,
+                linecolor="#00000000",
+                facecolor=facecolor_B,
             )
         for mesh in self.meshes:
             mesh.plot_bnd(ax=ax, linecolor="k")

@@ -234,3 +234,45 @@ def interval_overlap_any_two(
         ),
     )
     # return np.logical_or.reduce(overlaps)
+
+
+def chimeraPart2DTreeTri(
+    meshB: TreeMesh,
+    meshes: list[FGMesh],
+    fluid_solid_B: np.typing.NDArray[np.int32],
+    fluid_solid_B_meshes: np.typing.NDArray[np.int32],
+    meshB_cell2cell: list[np.ndarray],
+    conns: list[MeshCellConn],
+    holeB: np.ndarray,
+    holes: list[np.ndarray],
+    N=8,
+):
+    from . import geomHelper
+    from . import partition
+
+    inf_val = 1e300
+
+    cost_val_B = 100
+    costB = np.ones_like(holeB, dtype=np.int32) + holeB.astype(np.int32) * cost_val_B
+
+    cost_val_M = 100
+
+    i_B_cells_iMesh = []
+
+    for iMesh, (mesh, conn) in enumerate(zip(meshes, conns)):
+        i_B_cells = meshB.get_containing_cells(mesh.mesh.cell_centers)
+        costB[i_B_cells] += (
+            np.ones_like(i_B_cells, np.int32)
+            + holes[iMesh].astype(np.int32) * cost_val_M
+        )
+        i_B_cells_iMesh.append(i_B_cells)
+
+    # print(costB)
+
+    max_sum, partB = partition.linear_partition_greedy_refined(costB, N=N)
+
+    parts = []
+    for i_B_cells in i_B_cells_iMesh:
+        parts.append(partB[i_B_cells])
+
+    return partB, parts

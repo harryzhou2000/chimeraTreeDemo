@@ -77,6 +77,36 @@ def extract_boundary_lines(physical_name, tag_to_idx):
     return np.vstack(lines)
 
 
+def gmsh_define_lc_wallFar(lc: float, lc_inner: float, inner_edges: list, dmax: float):
+    # ------------------------------------------------------------
+    # Mesh controls
+    # --------------------------------lc----------------------------
+    gmsh.option.setNumber("Mesh.CharacteristicLengthMin", lc_inner)
+    gmsh.option.setNumber("Mesh.CharacteristicLengthMax", lc)
+
+    # ------------------------------------------------------------
+    # Distance field from inner boundary
+    # ------------------------------------------------------------
+    gmsh.model.mesh.field.add("Distance", 1)
+    gmsh.model.mesh.field.setNumbers(1, "EdgesList", inner_edges)
+
+    # ------------------------------------------------------------
+    # Threshold field: size vs distance
+    # ------------------------------------------------------------
+    gmsh.model.mesh.field.add("Threshold", 2)
+    gmsh.model.mesh.field.setNumber(2, "InField", 1)
+    gmsh.model.mesh.field.setNumber(2, "SizeMin", lc_inner)
+    gmsh.model.mesh.field.setNumber(2, "SizeMax", lc)
+    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.0)
+    gmsh.model.mesh.field.setNumber(2, "DistMax", dmax)
+    gmsh.model.mesh.field.setAsBackgroundMesh(2)
+
+    # disable some mesh size controls
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+
+
 def buildMesh_tri_cylinder_gmsh(
     x0,
     r_inner,
@@ -168,33 +198,12 @@ def buildMesh_tri_cylinder_gmsh(
     gmsh.model.setPhysicalName(1, outer_tag, "outer")
     gmsh.model.setPhysicalName(2, surface_tag, "domain")
 
-    # ------------------------------------------------------------
-    # Mesh controls
-    # ------------------------------------------------------------
-    gmsh.option.setNumber("Mesh.CharacteristicLengthMin", lc_inner)
-    gmsh.option.setNumber("Mesh.CharacteristicLengthMax", lc)
-
-    # ------------------------------------------------------------
-    # Distance field from inner boundary
-    # ------------------------------------------------------------
-    gmsh.model.mesh.field.add("Distance", 1)
-    gmsh.model.mesh.field.setNumbers(1, "EdgesList", [ci, ci_lo])
-
-    # ------------------------------------------------------------
-    # Threshold field: size vs distance
-    # ------------------------------------------------------------
-    gmsh.model.mesh.field.add("Threshold", 2)
-    gmsh.model.mesh.field.setNumber(2, "InField", 1)
-    gmsh.model.mesh.field.setNumber(2, "SizeMin", lc_inner)
-    gmsh.model.mesh.field.setNumber(2, "SizeMax", lc)
-    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.0)
-    gmsh.model.mesh.field.setNumber(2, "DistMax", r_outer - r_inner)
-    gmsh.model.mesh.field.setAsBackgroundMesh(2)
-
-    # disable some mesh size controls
-    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
-    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
-    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh_define_lc_wallFar(
+        lc,
+        lc_inner,
+        inner_edges=[ci, ci_lo],
+        dmax=r_outer - r_inner,
+    )
 
     gmsh.model.mesh.generate(2)
 
@@ -227,11 +236,179 @@ def buildMesh_tri_cylinder_gmsh(
 
     mesh = SimplexMesh(points, simplices)
 
-    boundary_tags = {
-        "inner": inner_tag,
-        "outer": outer_tag,
-        "surface": surface_tag,
-    }
+    # boundary_tags = {
+    #     "inner": inner_tag,
+    #     "outer": outer_tag,
+    #     "surface": surface_tag,
+    # }
+
+    return mesh, wall_lines
+
+
+def gmsh_generate_tri_rect_mesh(
+    x0,
+    r_inner=(0.5, 0.5),
+    r_outer=(0.8, 0.8),
+    lc=0.1,
+    lc_inner=0.02,
+):
+    x0 = np.asarray(x0, dtype=np.float64)
+
+    # gmsh.option.setNumber("Mesh.Algorithm", 2)
+    gmsh.option.setNumber("Mesh.ElementOrder", 1)
+    gmsh.option.setNumber("Mesh.HighOrderOptimize", 0)
+    gmsh.option.setNumber("Mesh.SecondOrderLinear", 0)
+
+    gmsh.model.add("ring")
+    # ------------------------------------------------------------
+    # Geometry
+    # ------------------------------------------------------------
+    # ci = gmsh.model.occ.addCircle(x0[0], x0[1], 0.0, r_inner)
+    # co = gmsh.model.occ.addCircle(x0[0], x0[1], 0.0, r_outer)
+
+    # li = gmsh.model.occ.addCurveLoop([-ci])
+    # lo = gmsh.model.occ.addCurveLoop([co])
+
+    # surf = gmsh.model.occ.addPlaneSurface([lo, li])
+
+    # gmsh.model.occ.synchronize()
+
+    # ------------------------------------------------------------
+    # Geometry with GEO
+    # ------------------------------------------------------------
+    p_center = gmsh.model.geo.addPoint(x0[0], x0[1], 0, 0.1)
+
+    offsets = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+
+    p_inner = [
+        gmsh.model.geo.addPoint(
+            x0[0] + r_inner[0] * offset_x, x0[1] + r_inner[1] * offset_y, 0, lc_inner
+        )
+        for offset_x, offset_y in offsets
+    ]
+
+    p_outer = [
+        gmsh.model.geo.addPoint(
+            x0[0] + r_outer[0] * offset_x, x0[1] + r_outer[1] * offset_y, 0, lc_inner
+        )
+        for offset_x, offset_y in offsets
+    ]
+
+    cis = [gmsh.model.geo.addLine(p_inner[i], p_inner[(i + 1) % 4]) for i in range(4)]
+    cos = [gmsh.model.geo.addLine(p_outer[i], p_outer[(i + 1) % 4]) for i in range(4)]
+
+    # Curve loops (outer CCW, inner CW via negative tag)
+    outer_loop = gmsh.model.geo.addCurveLoop([co for co in cos])
+    inner_loop = gmsh.model.geo.addCurveLoop([-ci for ci in cis])
+    surf = gmsh.model.geo.addPlaneSurface([outer_loop, inner_loop])
+
+    # # Enforce uniform 1D mesh with exact point counts
+    # n_inner = int(np.ceil(np.pi * r_inner / lc_inner))
+    # n_outer = int(np.ceil(np.pi * r_outer / lc))
+    # gmsh.model.geo.mesh.setTransfiniteCurve(ci, n_inner, "Progression", 1.0)
+    # gmsh.model.geo.mesh.setTransfiniteCurve(ci_lo, n_inner, "Progression", 1.0)
+    # gmsh.model.geo.mesh.setTransfiniteCurve(co, n_outer, "Progression", 1.0)
+    # gmsh.model.geo.mesh.setTransfiniteCurve(co_lo, n_outer, "Progression", 1.0)
+
+    n_inner = [int(np.ceil(2 * r / lc_inner)) for r in r_inner]
+    n_outer = [int(np.ceil(2 * r / lc)) for r in r_outer]
+    n_inner = n_inner + n_inner
+    n_outer = n_outer + n_outer
+
+    for i, ci in enumerate(cis):
+        gmsh.model.geo.mesh.setTransfiniteCurve(ci, n_inner[i], "Progression", 1.0)
+    for i, co in enumerate(cos):
+        gmsh.model.geo.mesh.setTransfiniteCurve(co, n_outer[i], "Progression", 1.0)
+    gmsh.model.geo.synchronize()
+
+    # ------------------------------------------------------------
+    # Physical groups (boundary IDs)
+    # ------------------------------------------------------------
+    inner_tag = gmsh.model.addPhysicalGroup(1, cis)
+    outer_tag = gmsh.model.addPhysicalGroup(1, cos)
+    surface_tag = gmsh.model.addPhysicalGroup(2, [surf])
+
+    gmsh.model.setPhysicalName(1, inner_tag, "inner")
+    gmsh.model.setPhysicalName(1, outer_tag, "outer")
+    gmsh.model.setPhysicalName(2, surface_tag, "domain")
+
+    gmsh_define_lc_wallFar(
+        lc,
+        lc_inner,
+        inner_edges=cis,
+        dmax=min(r_outer[0] - r_inner[0], r_outer[1] - r_inner[1]),
+    )
+
+    gmsh.model.mesh.generate(2)
+
+
+def buildMesh_tri_rect_gmsh(
+    x0,
+    r_inner=(0.5, 0.5),
+    r_outer=(0.8, 0.8),
+    lc=0.1,
+    lc_inner=0.02,
+):
+    """
+    Build a 2-D rect ring mesh using gmsh and return a discretize SimplexMesh.
+
+    Parameters
+    ----------
+    x0 : array-like (2,)
+        Center of the ring.
+    r_inner : (float,float)
+        Inner radius.
+    r_outer : (float,float)
+        Outer radius.
+    lc : float
+        Target mesh size.
+
+    Returns
+    -------
+    mesh : discretize.SimplexMesh
+    boundary_tags : dict
+        Physical tags for inner / outer boundaries.
+    """
+
+    gmsh.initialize()
+    gmsh_generate_tri_rect_mesh(
+        x0=x0, r_inner=r_inner, r_outer=r_outer, lc=lc, lc_inner=lc_inner
+    )
+
+    # ------------------------------------------------------------
+    # Extract nodes
+    # ------------------------------------------------------------
+    node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
+    points = node_coords.reshape(-1, 3)[:, :2]
+
+    # Map gmsh node tags → zero-based indexing
+    tag_to_idx = {tag: i for i, tag in enumerate(node_tags)}
+
+    # ------------------------------------------------------------
+    # Extract triangles
+    # ------------------------------------------------------------
+    elem_types, elem_tags, elem_nodes = gmsh.model.mesh.getElements(2)
+
+    triangles = []
+    for etype, nodes in zip(elem_types, elem_nodes):
+        print(gmsh.model.mesh.getElementProperties(etype)[0])
+        if gmsh.model.mesh.getElementProperties(etype)[0] == "Triangle 3":
+            conn = np.array(nodes).reshape(-1, 3)
+            triangles.append(np.vectorize(tag_to_idx.get)(conn))
+
+    simplices = np.vstack(triangles)
+
+    wall_lines = extract_boundary_lines("inner", tag_to_idx)
+
+    gmsh.finalize()
+
+    mesh = SimplexMesh(points, simplices)
+
+    # boundary_tags = {
+    #     "inner": inner_tag,
+    #     "outer": outer_tag,
+    #     "surface": surface_tag,
+    # }
 
     return mesh, wall_lines
 
